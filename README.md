@@ -20,10 +20,11 @@ These values are intentionally not configurable.
 
 ## Generate a profile
 
-Use an ICC/ICM profile containing an MHC2 tag as the template:
+Use an ICC/ICM profile containing an MHC2 tag with exactly 1024 LUT entries as
+the template:
 
 ```powershell
-python -m hdrfix.generate_profile TEMPLATE.icm OUTPUT.icm
+python -m hdrfix.generate_profile TEMPLATE.icm output\HDRFix.icm
 ```
 
 Optional arguments are limited to the SDR luminance range and overwrite safety:
@@ -34,13 +35,27 @@ Optional arguments are limited to the SDR luminance range and overwrite safety:
 --force
 ```
 
-The LUT entry count is read from the template. HDRFix writes the same generated
-LUT to all three MHC2 channels, recalculates the ICC Profile ID, writes the
-result safely, and reparses it for validation. Existing output files are not
-overwritten unless `--force` is supplied, and the template itself is never
-modified.
+HDRFix v0.1 requires a 1024-entry MHC2 template. The current patcher replaces
+existing LUT values but does not resize the MHC2 tag. In particular, the
+two-entry identity profiles produced by Windows HDR Calibration are unsuitable:
+two endpoints cannot represent the final curve through its near-black
+transition.
 
-HDRFix does not install profiles or change Windows color settings.
+The LUT entry count is read from the template rather than selected on the
+command line. HDRFix writes the same generated LUT to all three MHC2 channels,
+recalculates the ICC Profile ID, writes the result safely, and reparses it for
+validation. If the output directory or any parent directories do not exist,
+HDRFix creates them automatically. Existing output files are not overwritten
+unless `--force` is supplied, and the template itself is never modified.
+
+Inspect the generated profile without changing it:
+
+```powershell
+python -m hdrfix.inspect output\HDRFix.icm
+```
+
+Profile installation remains a manual step. HDRFix does not install profiles
+automatically or change Windows color settings.
 
 ## Analyze the curve
 

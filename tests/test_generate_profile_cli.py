@@ -14,7 +14,7 @@ def _write_template(
     path: Path,
     make_mhc2_profile,
     *,
-    entries: int = 3,
+    entries: int = 1024,
 ) -> bytes:
     last_index = entries - 1
     data = make_mhc2_profile(
@@ -59,7 +59,7 @@ def test_cli_generates_fixed_shadow_stretch_in_all_channels(
     capsys,
     make_mhc2_profile,
 ):
-    entries = 65
+    entries = 1024
     template_path = tmp_path / "template HDR.icm"
     output_path = tmp_path / "fixed shadow stretch.icm"
     template_data = _write_template(
@@ -104,7 +104,7 @@ def test_cli_generates_fixed_shadow_stretch_in_all_channels(
     assert "Curve: Pure Power 2.2 + Shadow Stretch" in output
     assert "Shadow end: 10.0 nits" in output
     assert "Shadow strength: 0.25" in output
-    assert "Entradas: 65" in output
+    assert "Entradas: 1024" in output
     assert "Negro SDR: 0.01 nits" in output
     assert "Blanco SDR: 80.0 nits" in output
     assert str(output_path) in output
@@ -150,7 +150,107 @@ def test_cli_force_overwrites_existing_output_with_parseable_profile(
 
     assert result == 0
     assert generated_profile.mhc2 is not None
-    assert generated_profile.mhc2.lut_entry_count == 3
+    assert generated_profile.mhc2.lut_entry_count == 1024
+    assert template_path.read_bytes() == template_data
+
+
+def test_cli_creates_missing_output_directory_and_parseable_profile(
+    tmp_path,
+    make_mhc2_profile,
+):
+    template_path = tmp_path / "template.icm"
+    output_directory = tmp_path / "generated"
+    output_path = output_directory / "profile.icm"
+    template_data = _write_template(template_path, make_mhc2_profile)
+
+    assert not output_directory.exists()
+
+    result = main([str(template_path), str(output_path)])
+    generated_profile = parse_profile(output_path.read_bytes())
+
+    assert result == 0
+    assert output_directory.is_dir()
+    assert generated_profile.mhc2 is not None
+    assert generated_profile.mhc2.lut_entry_count == 1024
+    assert template_path.read_bytes() == template_data
+
+
+def test_cli_creates_multiple_nested_output_directories(
+    tmp_path,
+    make_mhc2_profile,
+):
+    template_path = tmp_path / "template.icm"
+    output_path = (
+        tmp_path
+        / "generated"
+        / "profiles"
+        / "hdr"
+        / "profile.icm"
+    )
+    template_data = _write_template(template_path, make_mhc2_profile)
+
+    assert not output_path.parent.exists()
+
+    result = main([str(template_path), str(output_path)])
+    generated_profile = parse_profile(output_path.read_bytes())
+
+    assert result == 0
+    assert output_path.parent.is_dir()
+    assert generated_profile.mhc2 is not None
+    assert generated_profile.mhc2.lut_entry_count == 1024
+    assert template_path.read_bytes() == template_data
+
+
+@pytest.mark.parametrize("entries", [2, 512, 4096])
+def test_cli_rejects_template_without_exactly_1024_entries(
+    entries,
+    tmp_path,
+    capsys,
+    make_mhc2_profile,
+):
+    template_path = tmp_path / f"template-{entries}.icm"
+    output_path = tmp_path / "generated" / "profile.icm"
+    template_data = _write_template(
+        template_path,
+        make_mhc2_profile,
+        entries=entries,
+    )
+
+    with pytest.raises(SystemExit) as error:
+        main([str(template_path), str(output_path)])
+
+    message = capsys.readouterr().err
+    assert error.value.code == 2
+    assert f"Detected {entries} MHC2 LUT entries" in message
+    assert "HDRFix v0.1" in message
+    assert "1024-entry MHC2 template" in message
+    assert (
+        "two-entry Windows HDR Calibration identity profiles "
+        "are unsuitable"
+    ) in message
+    assert template_path.read_bytes() == template_data
+    assert not output_path.exists()
+    assert not output_path.parent.exists()
+
+
+def test_cli_accepts_template_with_exactly_1024_entries(
+    tmp_path,
+    make_mhc2_profile,
+):
+    template_path = tmp_path / "template-1024.icm"
+    output_path = tmp_path / "generated.icm"
+    template_data = _write_template(
+        template_path,
+        make_mhc2_profile,
+        entries=1024,
+    )
+
+    result = main([str(template_path), str(output_path)])
+    generated_profile = parse_profile(output_path.read_bytes())
+
+    assert result == 0
+    assert generated_profile.mhc2 is not None
+    assert generated_profile.mhc2.lut_entry_count == 1024
     assert template_path.read_bytes() == template_data
 
 

@@ -113,6 +113,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         final_data = build_patched_profile(template_data, lut)
 
+        arguments.output.parent.mkdir(parents=True, exist_ok=True)
         _write_profile_atomically(
             arguments.output,
             final_data,
@@ -149,9 +150,11 @@ def _validate_generation_parameters(
     sdr_white_nits: float,
     sdr_black_nits: float,
 ) -> None:
-    if not 2 <= entries <= 4096:
+    if entries != 1024:
         raise ValueError(
-            "La LUT debe contener entre 2 y 4096 entradas."
+            f"Detected {entries} MHC2 LUT entries. HDRFix v0.1 requires "
+            "a 1024-entry MHC2 template; two-entry Windows HDR "
+            "Calibration identity profiles are unsuitable."
         )
     if not (
         math.isfinite(sdr_black_nits)
