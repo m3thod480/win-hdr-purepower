@@ -6,3 +6,7 @@ __pycache__/
 samples/*.icc
 samples/*.icm
 output/
+
+.pytest_tmp/
+*.egg-info/
+*.egg-info/
