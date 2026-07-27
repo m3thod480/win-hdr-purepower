@@ -3,10 +3,13 @@ import pytest
 from hdrfix.curves import (
     colorcontrol_pure_power_sample,
     generate_colorcontrol_lut,
+    generate_smooth_anchored_lut,
     luminance_to_srgb_signal,
     nits_to_pq,
     pq_to_nits,
     quantize_s15_fixed_16,
+    smooth_anchored_power_sample,
+    smootherstep,
 )
 
 from pathlib import Path
@@ -252,3 +255,72 @@ def test_generated_lut_matches_colorcontrol_profile_exactly():
     )
 
     assert generated_quantized == reference_quantized
+
+def test_smootherstep_endpoints_and_midpoint():
+    assert smootherstep(0.0) == pytest.approx(0.0)
+    assert smootherstep(0.5) == pytest.approx(0.5)
+    assert smootherstep(1.0) == pytest.approx(1.0)
+
+
+@pytest.mark.parametrize("value", [-0.01, 1.01])
+def test_smootherstep_rejects_values_outside_range(value: float):
+    with pytest.raises(ValueError):
+        smootherstep(value)
+
+def test_smooth_anchored_matches_colorcontrol_at_midpoint():
+    input_pq = nits_to_pq(50.0)
+
+    colorcontrol = colorcontrol_pure_power_sample(input_pq)
+    smooth = smooth_anchored_power_sample(input_pq)
+
+    assert smooth == pytest.approx(colorcontrol, abs=1e-12)
+
+def test_smooth_anchored_applies_less_correction_near_sdr_white():
+    input_pq = nits_to_pq(75.0)
+
+    colorcontrol = colorcontrol_pure_power_sample(input_pq)
+    smooth = smooth_anchored_power_sample(input_pq)
+
+    assert abs(smooth - input_pq) < abs(colorcontrol - input_pq)
+
+def test_smooth_anchored_applies_more_correction_in_lower_half():
+    input_pq = nits_to_pq(25.0)
+
+    colorcontrol = colorcontrol_pure_power_sample(input_pq)
+    smooth = smooth_anchored_power_sample(input_pq)
+
+    assert abs(smooth - input_pq) > abs(colorcontrol - input_pq)
+
+def test_smooth_anchored_darkens_near_black_more_than_colorcontrol():
+    input_pq = nits_to_pq(1.0)
+
+    colorcontrol = colorcontrol_pure_power_sample(input_pq)
+    smooth = smooth_anchored_power_sample(input_pq)
+
+    assert smooth < colorcontrol < input_pq
+
+@pytest.mark.parametrize("luminance", [100.0, 520.0, 1_000.0])
+def test_smooth_anchored_is_identity_above_sdr_white(
+    luminance: float,
+):
+    input_pq = nits_to_pq(luminance)
+
+    output_pq = smooth_anchored_power_sample(input_pq)
+
+    assert output_pq == pytest.approx(input_pq, abs=1e-12)
+
+
+def test_smooth_anchored_lut_is_monotonic():
+    lut = generate_smooth_anchored_lut()
+
+    assert all(
+        current <= following
+        for current, following in zip(lut, lut[1:])
+    )
+
+
+def test_smooth_anchored_lut_endpoints_quantize_to_identity():
+    lut = generate_smooth_anchored_lut()
+
+    assert quantize_s15_fixed_16(lut[0]) == 0
+    assert quantize_s15_fixed_16(lut[-1]) == 65_536

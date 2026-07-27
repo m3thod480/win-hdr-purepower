@@ -157,3 +157,85 @@ S15_FIXED_16_SCALE = 65_536
 def quantize_s15_fixed_16(value: float) -> int:
     """Convierte un float al entero utilizado por s15Fixed16."""
     return round(value * S15_FIXED_16_SCALE)
+
+def smootherstep(value: float) -> float:
+    """Transición suave entre 0 y 1."""
+    if not 0.0 <= value <= 1.0:
+        raise ValueError("El valor de smootherstep debe estar entre 0 y 1.")
+
+    return value**3 * (
+        value * (value * 6.0 - 15.0) + 10.0
+    )
+
+def smooth_anchored_power_sample(
+    input_pq: float,
+    *,
+    gamma: float = 2.2,
+    sdr_white_nits: float = 100.0,
+    sdr_black_nits: float = 0.0,
+) -> float:
+    """Pure Power con una transición smootherstep hacia identidad."""
+    if gamma <= 0.0:
+        raise ValueError("La gamma debe ser mayor que cero.")
+
+    if not (
+        0.0 <= sdr_black_nits
+        < sdr_white_nits
+        <= PQ_MAX_LUMINANCE
+    ):
+        raise ValueError(
+            "El rango SDR debe estar entre 0 y 10.000 nits "
+            "y el blanco debe superar al negro."
+        )
+
+    original_nits = pq_to_nits(input_pq)
+
+    srgb_signal = luminance_to_srgb_signal(
+        luminance=original_nits,
+        white_luminance=sdr_white_nits,
+        black_luminance=sdr_black_nits,
+    )
+
+    corrected_nits = (
+        sdr_black_nits
+        + (sdr_white_nits - sdr_black_nits)
+        * srgb_signal**gamma
+    )
+
+    corrected_pq = nits_to_pq(max(0.0, corrected_nits))
+
+    linear_fade = min(
+        1.0,
+        original_nits / sdr_white_nits,
+    )
+
+    smooth_fade = smootherstep(linear_fade)
+
+    return corrected_pq + smooth_fade * (
+        input_pq - corrected_pq
+    )
+
+def generate_smooth_anchored_lut(
+    *,
+    entries: int = 1024,
+    gamma: float = 2.2,
+    sdr_white_nits: float = 100.0,
+    sdr_black_nits: float = 0.0,
+) -> tuple[float, ...]:
+    """Genera una LUT Smooth Anchored Power."""
+    if not 2 <= entries <= 4096:
+        raise ValueError(
+            "La LUT debe contener entre 2 y 4096 entradas."
+        )
+
+    last_index = entries - 1
+
+    return tuple(
+        smooth_anchored_power_sample(
+            index / last_index,
+            gamma=gamma,
+            sdr_white_nits=sdr_white_nits,
+            sdr_black_nits=sdr_black_nits,
+        )
+        for index in range(entries)
+    )
