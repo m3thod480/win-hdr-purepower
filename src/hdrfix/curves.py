@@ -72,3 +72,55 @@ def luminance_to_srgb_signal(
         * normalized ** (1.0 / SRGB_ENCODING_GAMMA)
         - SRGB_OFFSET
     )
+
+def colorcontrol_pure_power_sample(
+    input_pq: float,
+    *,
+    gamma: float = 2.2,
+    sdr_white_nits: float = 100.0,
+    sdr_black_nits: float = 0.0,
+) -> float:
+    """Calcula una salida de la curva Pure Power usada por ColorControl."""
+    if gamma <= 0.0:
+        raise ValueError("La gamma debe ser mayor que cero.")
+
+    if not (
+        0.0 <= sdr_black_nits
+        < sdr_white_nits
+        <= PQ_MAX_LUMINANCE
+    ):
+        raise ValueError(
+            "El rango SDR debe estar entre 0 y 10.000 nits "
+            "y el blanco debe superar al negro."
+        )
+
+    # 1. Convertimos la entrada PQ a luminancia física.
+    original_nits = pq_to_nits(input_pq)
+
+    # 2. Interpretamos esa luminancia mediante la curva piecewise sRGB.
+    srgb_signal = luminance_to_srgb_signal(
+        luminance=original_nits,
+        white_luminance=sdr_white_nits,
+        black_luminance=sdr_black_nits,
+    )
+
+    # 3. Aplicamos la potencia objetivo, por ejemplo 2.2.
+    corrected_nits = (
+        sdr_black_nits
+        + (sdr_white_nits - sdr_black_nits)
+        * srgb_signal**gamma
+    )
+
+    # 4. Volvemos a codificar la luminancia corregida como PQ.
+    corrected_pq = nits_to_pq(max(0.0, corrected_nits))
+
+    # 5. Reducimos linealmente la corrección conforme nos acercamos
+    #    al blanco SDR. Al alcanzarlo, la salida vuelve a identidad.
+    fade_to_identity = min(
+        1.0,
+        original_nits / sdr_white_nits,
+    )
+
+    return corrected_pq + fade_to_identity * (
+        input_pq - corrected_pq
+    )

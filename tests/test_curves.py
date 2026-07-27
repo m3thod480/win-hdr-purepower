@@ -1,11 +1,11 @@
 import pytest
 
 from hdrfix.curves import (
+    colorcontrol_pure_power_sample,
     luminance_to_srgb_signal,
     nits_to_pq,
     pq_to_nits,
 )
-
 
 def test_pq_zero_represents_zero_nits():
     assert pq_to_nits(0.0) == pytest.approx(0.0)
@@ -108,4 +108,65 @@ def test_rejects_invalid_luminance_range():
             luminance=50.0,
             white_luminance=0.0,
             black_luminance=0.0,
+        )
+
+def test_colorcontrol_curve_darkens_low_luminance():
+    input_pq = nits_to_pq(1.0)
+
+    output_pq = colorcontrol_pure_power_sample(input_pq)
+
+    assert output_pq < input_pq
+
+
+@pytest.mark.parametrize(
+    "luminance",
+    [100.0, 520.0, 1_000.0],
+)
+def test_colorcontrol_curve_is_identity_at_and_above_sdr_white(
+    luminance: float,
+):
+    input_pq = nits_to_pq(luminance)
+
+    output_pq = colorcontrol_pure_power_sample(
+        input_pq,
+        sdr_white_nits=100.0,
+    )
+
+    assert output_pq == pytest.approx(
+        input_pq,
+        abs=1e-12,
+    )
+
+
+def test_colorcontrol_known_sample():
+    input_pq = 256 / 1023
+
+    output_pq = colorcontrol_pure_power_sample(input_pq)
+
+    assert output_pq == pytest.approx(
+        0.24558283238708356,
+        abs=1e-12,
+    )
+
+
+@pytest.mark.parametrize(
+    "gamma",
+    [0.0, -1.0],
+)
+def test_colorcontrol_curve_rejects_invalid_gamma(
+    gamma: float,
+):
+    with pytest.raises(ValueError):
+        colorcontrol_pure_power_sample(
+            input_pq=0.5,
+            gamma=gamma,
+        )
+
+
+def test_colorcontrol_curve_rejects_invalid_sdr_range():
+    with pytest.raises(ValueError):
+        colorcontrol_pure_power_sample(
+            input_pq=0.5,
+            sdr_black_nits=100.0,
+            sdr_white_nits=100.0,
         )
