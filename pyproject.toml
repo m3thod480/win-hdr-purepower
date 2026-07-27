@@ -3,11 +3,20 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "hdrfix"
+name = "win-hdr-shadow-stretch"
 version = "0.1.0"
-description = "Perfiles ICC HDR con Pure Power 2.2 y Shadow Stretch fijo"
+description = "Pure Power 2.2 with fixed mild Shadow Stretch"
+readme = "README.md"
 requires-python = ">=3.12"
 dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/m3thod480/win-hdr-shadow-stretch"
+Repository = "https://github.com/m3thod480/win-hdr-shadow-stretch"
+Issues = "https://github.com/m3thod480/win-hdr-shadow-stretch/issues"
+
+[project.scripts]
+hdr-shadow-stretch = "hdrfix.generate_profile:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

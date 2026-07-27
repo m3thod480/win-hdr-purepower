@@ -152,7 +152,8 @@ def _validate_generation_parameters(
 ) -> None:
     if entries != 1024:
         raise ValueError(
-            f"Detected {entries} MHC2 LUT entries. HDRFix v0.1 requires "
+            f"Detected {entries} MHC2 LUT entries. "
+            "Windows HDR Shadow Stretch v0.1 requires "
             "a 1024-entry MHC2 template; two-entry Windows HDR "
             "Calibration identity profiles are unsuitable."
         )

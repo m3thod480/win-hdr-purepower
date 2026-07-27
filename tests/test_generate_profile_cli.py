@@ -222,7 +222,7 @@ def test_cli_rejects_template_without_exactly_1024_entries(
     message = capsys.readouterr().err
     assert error.value.code == 2
     assert f"Detected {entries} MHC2 LUT entries" in message
-    assert "HDRFix v0.1" in message
+    assert "Windows HDR Shadow Stretch v0.1" in message
     assert "1024-entry MHC2 template" in message
     assert (
         "two-entry Windows HDR Calibration identity profiles "
