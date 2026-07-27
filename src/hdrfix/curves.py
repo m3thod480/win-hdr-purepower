@@ -124,3 +124,36 @@ def colorcontrol_pure_power_sample(
     return corrected_pq + fade_to_identity * (
         input_pq - corrected_pq
     )
+
+def generate_colorcontrol_lut(
+    *,
+    entries: int = 1024,
+    gamma: float = 2.2,
+    sdr_white_nits: float = 100.0,
+    sdr_black_nits: float = 0.0,
+) -> tuple[float, ...]:
+    """Genera una LUT Pure Power equivalente a la de ColorControl."""
+    if entries < 2:
+        raise ValueError("La LUT debe contener al menos dos entradas.")
+
+    if entries > 4096:
+        raise ValueError("MHC2 admite como máximo 4096 entradas.")
+
+    last_index = entries - 1
+
+    return tuple(
+        colorcontrol_pure_power_sample(
+            index / last_index,
+            gamma=gamma,
+            sdr_white_nits=sdr_white_nits,
+            sdr_black_nits=sdr_black_nits,
+        )
+        for index in range(entries)
+    )
+
+S15_FIXED_16_SCALE = 65_536
+
+
+def quantize_s15_fixed_16(value: float) -> int:
+    """Convierte un float al entero utilizado por s15Fixed16."""
+    return round(value * S15_FIXED_16_SCALE)
