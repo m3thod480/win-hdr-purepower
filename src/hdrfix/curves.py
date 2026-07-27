@@ -13,6 +13,13 @@ SRGB_OFFSET = 0.055
 SRGB_SCALE = 1.055
 SRGB_ENCODING_GAMMA = 2.4
 
+# Exponente Pure Power seleccionado para conservar el aspecto SDR general.
+PURE_POWER_GAMMA = 2.2
+# El ajuste de sombras afecta únicamente a los primeros 10 nits.
+SHADOW_STRETCH_END_NITS = 10.0
+# Se relaja un 25 % la compresión de Pure Power en la zona afectada.
+SHADOW_STRETCH_STRENGTH = 0.25
+
 
 def pq_to_nits(signal_value: float) -> float:
     """Convierte una señal PQ normalizada en luminancia absoluta."""
@@ -76,7 +83,7 @@ def luminance_to_srgb_signal(
 def colorcontrol_pure_power_sample(
     input_pq: float,
     *,
-    gamma: float = 2.2,
+    gamma: float = PURE_POWER_GAMMA,
     sdr_white_nits: float = 100.0,
     sdr_black_nits: float = 0.0,
 ) -> float:
@@ -128,7 +135,7 @@ def colorcontrol_pure_power_sample(
 def generate_colorcontrol_lut(
     *,
     entries: int = 1024,
-    gamma: float = 2.2,
+    gamma: float = PURE_POWER_GAMMA,
     sdr_white_nits: float = 100.0,
     sdr_black_nits: float = 0.0,
 ) -> tuple[float, ...]:
@@ -167,62 +174,55 @@ def smootherstep(value: float) -> float:
         value * (value * 6.0 - 15.0) + 10.0
     )
 
-def smooth_anchored_power_sample(
+def shadow_stretch_power_sample(
     input_pq: float,
     *,
-    gamma: float = 2.2,
     sdr_white_nits: float = 100.0,
     sdr_black_nits: float = 0.0,
 ) -> float:
-    """Pure Power con una transición smootherstep hacia identidad."""
-    if gamma <= 0.0:
-        raise ValueError("La gamma debe ser mayor que cero.")
-
-    if not (
-        0.0 <= sdr_black_nits
-        < sdr_white_nits
-        <= PQ_MAX_LUMINANCE
-    ):
+    """Aplica el Shadow Stretch fijo sobre Pure Power 2.2."""
+    if sdr_white_nits < SHADOW_STRETCH_END_NITS:
         raise ValueError(
-            "El rango SDR debe estar entre 0 y 10.000 nits "
-            "y el blanco debe superar al negro."
+            "El blanco SDR no puede ser inferior al final fijo "
+            "de sombras."
         )
-
-    original_nits = pq_to_nits(input_pq)
-
-    srgb_signal = luminance_to_srgb_signal(
-        luminance=original_nits,
-        white_luminance=sdr_white_nits,
-        black_luminance=sdr_black_nits,
+    pure_power_pq = colorcontrol_pure_power_sample(
+        input_pq,
+        gamma=PURE_POWER_GAMMA,
+        sdr_white_nits=sdr_white_nits,
+        sdr_black_nits=sdr_black_nits,
     )
 
-    corrected_nits = (
-        sdr_black_nits
-        + (sdr_white_nits - sdr_black_nits)
-        * srgb_signal**gamma
+    if input_pq == 0.0:
+        return 0.0
+
+    if input_pq >= nits_to_pq(SHADOW_STRETCH_END_NITS):
+        return pure_power_pq
+
+    input_nits = pq_to_nits(input_pq)
+    pure_power_nits = pq_to_nits(pure_power_pq)
+    transition = max(
+        0.0,
+        min(1.0, input_nits / SHADOW_STRETCH_END_NITS),
+    )
+    shadow_weight = 1.0 - smootherstep(transition)
+    output_nits = (
+        pure_power_nits
+        + SHADOW_STRETCH_STRENGTH
+        * shadow_weight
+        * (input_nits - pure_power_nits)
     )
 
-    corrected_pq = nits_to_pq(max(0.0, corrected_nits))
+    return nits_to_pq(output_nits)
 
-    linear_fade = min(
-        1.0,
-        original_nits / sdr_white_nits,
-    )
 
-    smooth_fade = smootherstep(linear_fade)
-
-    return corrected_pq + smooth_fade * (
-        input_pq - corrected_pq
-    )
-
-def generate_smooth_anchored_lut(
+def generate_shadow_stretch_lut(
     *,
     entries: int = 1024,
-    gamma: float = 2.2,
     sdr_white_nits: float = 100.0,
     sdr_black_nits: float = 0.0,
 ) -> tuple[float, ...]:
-    """Genera una LUT Smooth Anchored Power."""
+    """Genera la LUT final Pure Power 2.2 + Shadow Stretch fijo."""
     if not 2 <= entries <= 4096:
         raise ValueError(
             "La LUT debe contener entre 2 y 4096 entradas."
@@ -231,9 +231,8 @@ def generate_smooth_anchored_lut(
     last_index = entries - 1
 
     return tuple(
-        smooth_anchored_power_sample(
+        shadow_stretch_power_sample(
             index / last_index,
-            gamma=gamma,
             sdr_white_nits=sdr_white_nits,
             sdr_black_nits=sdr_black_nits,
         )

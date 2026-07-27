@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "hdrfix"
 version = "0.1.0"
-description = "Inspector educativo y de solo lectura para perfiles ICC HDR de Windows"
+description = "Perfiles ICC HDR con Pure Power 2.2 y Shadow Stretch fijo"
 requires-python = ">=3.12"
 dependencies = []
 
