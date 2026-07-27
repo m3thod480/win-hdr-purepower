@@ -1,8 +1,13 @@
-"""CLI para analizar y comparar las curvas tonales generadas."""
+"""CLI para analizar la curva tonal final."""
 
 import argparse
 
 from hdrfix.curve_analysis import CurveAnalysis, analyze_curves
+from hdrfix.curves import (
+    PURE_POWER_GAMMA,
+    SHADOW_STRETCH_END_NITS,
+    SHADOW_STRETCH_STRENGTH,
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -11,39 +16,28 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python -m hdrfix.analyze_curves",
         description=(
-            "Compara numéricamente Pure Power de ColorControl "
-            "con Smooth Anchored Power."
+            "Compara numéricamente Pure Power 2.2 con la curva final "
+            "de Shadow Stretch fijo."
         ),
     )
-
     parser.add_argument(
         "--entries",
         type=int,
         default=1024,
         help="Número de entradas de las LUT (predeterminado: 1024).",
     )
-
-    parser.add_argument(
-        "--gamma",
-        type=float,
-        default=2.2,
-        help="Gamma Pure Power (predeterminado: 2.2).",
-    )
-
     parser.add_argument(
         "--sdr-white",
         type=float,
         default=100.0,
         help="Blanco SDR en nits (predeterminado: 100).",
     )
-
     parser.add_argument(
         "--sdr-black",
         type=float,
         default=0.0,
         help="Negro SDR en nits (predeterminado: 0).",
     )
-
     return parser
 
 
@@ -56,7 +50,6 @@ def main(argv: list[str] | None = None) -> int:
     try:
         analysis = analyze_curves(
             entries=arguments.entries,
-            gamma=arguments.gamma,
             sdr_white_nits=arguments.sdr_white,
             sdr_black_nits=arguments.sdr_black,
         )
@@ -65,18 +58,15 @@ def main(argv: list[str] | None = None) -> int:
 
     print_analysis(
         analysis,
-        gamma=arguments.gamma,
         sdr_white_nits=arguments.sdr_white,
         sdr_black_nits=arguments.sdr_black,
     )
-
     return 0
 
 
 def print_analysis(
     analysis: CurveAnalysis,
     *,
-    gamma: float,
     sdr_white_nits: float,
     sdr_black_nits: float,
 ) -> None:
@@ -84,56 +74,51 @@ def print_analysis(
 
     print("Configuración:")
     print(f"  Entradas LUT: {analysis.entries}")
-    print(f"  Gamma: {gamma}")
+    print(
+        "  Curva: "
+        f"Pure Power {PURE_POWER_GAMMA} + Shadow Stretch"
+    )
     print(f"  Negro SDR: {sdr_black_nits:.3f} nits")
     print(f"  Blanco SDR: {sdr_white_nits:.3f} nits")
+    print(
+        "  Final de sombras: "
+        f"{SHADOW_STRETCH_END_NITS:.3f} nits"
+    )
+    print(
+        "  Intensidad de sombras: "
+        f"{SHADOW_STRETCH_STRENGTH:.3f}"
+    )
     print()
 
     print("Muestras tonales:")
     print(
         f"{'Entrada':>10} "
-        f"{'ColorControl':>14} "
-        f"{'Smooth':>14} "
-        f"{'Delta CC':>12} "
-        f"{'Delta Smooth':>14} "
-        f"{'Smooth - CC':>14}"
+        f"{'Pure Power':>14} "
+        f"{'Shadow Stretch':>16} "
+        f"{'Delta Pure':>12} "
+        f"{'Delta Shadow':>14} "
+        f"{'Shadow - Pure':>14}"
     )
-
     for sample in analysis.samples:
         print(
             f"{sample.input_nits:>10.3f} "
-            f"{sample.colorcontrol_nits:>14.6f} "
-            f"{sample.smooth_nits:>14.6f} "
-            f"{sample.colorcontrol_delta_nits:>12.6f} "
-            f"{sample.smooth_delta_nits:>14.6f} "
-            f"{sample.difference_nits:>14.6f}"
+            f"{sample.pure_power_nits:>14.6f} "
+            f"{sample.shadow_stretch_nits:>16.6f} "
+            f"{sample.pure_power_delta_nits:>12.6f} "
+            f"{sample.shadow_stretch_delta_nits:>14.6f} "
+            f"{sample.shadow_stretch_minus_pure_power_nits:>14.6f}"
         )
 
     print()
     print("Resumen de las LUT:")
+    print("  Shadow Stretch frente a Pure Power:")
     print(
         "  Entradas cuantizadas diferentes: "
         f"{analysis.quantized_different_entries}"
     )
     print(
-        "  Smooth más brillante: "
-        f"{analysis.quantized_smooth_brighter_entries}"
-    )
-    print(
-        "  Smooth más oscura: "
-        f"{analysis.quantized_smooth_darker_entries}"
-    )
-    print(
-        "  Entradas iguales: "
-        f"{analysis.quantized_equal_entries}"
-    )
-    print(
-        "  Diferencia máxima absoluta: "
-        f"{analysis.max_absolute_difference_nits:.9f} nits"
-    )
-    print(
-        "  Diferencia máxima firmada: "
-        f"{analysis.max_signed_difference_nits:.9f} nits"
+        "  Diferencia máxima: "
+        f"{analysis.max_difference_nits:.9f} nits"
     )
     print(
         "  Entrada donde ocurre: "

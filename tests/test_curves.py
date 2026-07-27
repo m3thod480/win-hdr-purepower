@@ -1,19 +1,21 @@
+from pathlib import Path
+
 import pytest
 
 from hdrfix.curves import (
+    PURE_POWER_GAMMA,
+    SHADOW_STRETCH_END_NITS,
+    SHADOW_STRETCH_STRENGTH,
     colorcontrol_pure_power_sample,
     generate_colorcontrol_lut,
-    generate_smooth_anchored_lut,
+    generate_shadow_stretch_lut,
     luminance_to_srgb_signal,
     nits_to_pq,
     pq_to_nits,
     quantize_s15_fixed_16,
-    smooth_anchored_power_sample,
+    shadow_stretch_power_sample,
     smootherstep,
 )
-
-from pathlib import Path
-
 from hdrfix.icc import inspect_profile
 
 def test_pq_zero_represents_zero_nits():
@@ -267,60 +269,84 @@ def test_smootherstep_rejects_values_outside_range(value: float):
     with pytest.raises(ValueError):
         smootherstep(value)
 
-def test_smooth_anchored_matches_colorcontrol_at_midpoint():
-    input_pq = nits_to_pq(50.0)
 
+def test_fixed_shadow_stretch_configuration():
+    assert PURE_POWER_GAMMA == 2.2
+    assert SHADOW_STRETCH_END_NITS == 10.0
+    assert SHADOW_STRETCH_STRENGTH == 0.25
+
+
+def test_shadow_stretch_preserves_exact_black():
+    output = shadow_stretch_power_sample(0.0)
+    lut = generate_shadow_stretch_lut()
+
+    assert output == 0.0
+    assert lut[0] == 0.0
+    assert quantize_s15_fixed_16(output) == 0
+
+
+@pytest.mark.parametrize("luminance", [0.1, 1.0, 5.0, 9.0])
+def test_shadow_stretch_brightens_shadows_toward_identity(
+    luminance: float,
+):
+    input_pq = nits_to_pq(luminance)
     colorcontrol = colorcontrol_pure_power_sample(input_pq)
-    smooth = smooth_anchored_power_sample(input_pq)
+    stretched = shadow_stretch_power_sample(input_pq)
 
-    assert smooth == pytest.approx(colorcontrol, abs=1e-12)
+    assert colorcontrol < stretched <= input_pq
 
-def test_smooth_anchored_applies_less_correction_near_sdr_white():
-    input_pq = nits_to_pq(75.0)
 
-    colorcontrol = colorcontrol_pure_power_sample(input_pq)
-    smooth = smooth_anchored_power_sample(input_pq)
+def test_shadow_stretch_matches_colorcontrol_at_shadow_end():
+    input_pq = nits_to_pq(SHADOW_STRETCH_END_NITS)
 
-    assert abs(smooth - input_pq) < abs(colorcontrol - input_pq)
+    assert shadow_stretch_power_sample(
+        input_pq
+    ) == colorcontrol_pure_power_sample(input_pq)
 
-def test_smooth_anchored_applies_more_correction_in_lower_half():
-    input_pq = nits_to_pq(25.0)
 
-    colorcontrol = colorcontrol_pure_power_sample(input_pq)
-    smooth = smooth_anchored_power_sample(input_pq)
-
-    assert abs(smooth - input_pq) > abs(colorcontrol - input_pq)
-
-def test_smooth_anchored_darkens_near_black_more_than_colorcontrol():
-    input_pq = nits_to_pq(1.0)
-
-    colorcontrol = colorcontrol_pure_power_sample(input_pq)
-    smooth = smooth_anchored_power_sample(input_pq)
-
-    assert smooth < colorcontrol < input_pq
-
-@pytest.mark.parametrize("luminance", [100.0, 520.0, 1_000.0])
-def test_smooth_anchored_is_identity_above_sdr_white(
+@pytest.mark.parametrize("luminance", [10.0, 20.0, 100.0, 520.0])
+def test_shadow_stretch_matches_colorcontrol_above_shadow_end(
     luminance: float,
 ):
     input_pq = nits_to_pq(luminance)
 
-    output_pq = smooth_anchored_power_sample(input_pq)
+    assert shadow_stretch_power_sample(
+        input_pq
+    ) == colorcontrol_pure_power_sample(input_pq)
 
-    assert output_pq == pytest.approx(input_pq, abs=1e-12)
+
+@pytest.mark.parametrize(
+    ("parameter", "value"),
+    [
+        ("gamma", 2.4),
+        ("shadow_end_nits", 5.0),
+        ("strength", 0.5),
+    ],
+)
+def test_shadow_stretch_configuration_is_not_publicly_configurable(
+    parameter: str,
+    value: float,
+):
+    with pytest.raises(TypeError):
+        shadow_stretch_power_sample(0.5, **{parameter: value})
+
+    with pytest.raises(TypeError):
+        generate_shadow_stretch_lut(**{parameter: value})
 
 
-def test_smooth_anchored_lut_is_monotonic():
-    lut = generate_smooth_anchored_lut()
+def test_shadow_stretch_rejects_sdr_white_below_fixed_shadow_end():
+    with pytest.raises(ValueError):
+        generate_shadow_stretch_lut(
+            entries=2,
+            sdr_white_nits=SHADOW_STRETCH_END_NITS - 0.1,
+        )
 
+
+def test_shadow_stretch_lut_is_monotonic_and_bounded():
+    lut = generate_shadow_stretch_lut()
+
+    assert all(0.0 <= value <= 1.0 for value in lut)
     assert all(
         current <= following
         for current, following in zip(lut, lut[1:])
     )
-
-
-def test_smooth_anchored_lut_endpoints_quantize_to_identity():
-    lut = generate_smooth_anchored_lut()
-
-    assert quantize_s15_fixed_16(lut[0]) == 0
-    assert quantize_s15_fixed_16(lut[-1]) == 65_536

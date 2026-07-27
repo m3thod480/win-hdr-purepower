@@ -1,4 +1,4 @@
-"""Herramientas de solo lectura para inspeccionar perfiles ICC HDR."""
+"""Herramientas para inspeccionar y generar perfiles ICC HDR."""
 
 from .icc import (
     ICCFormatError,
@@ -19,4 +19,3 @@ __all__ = [
     "parse_profile",
     "read_profile",
 ]
-
