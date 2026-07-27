@@ -1,6 +1,10 @@
 import pytest
 
-from hdrfix.curves import nits_to_pq, pq_to_nits
+from hdrfix.curves import (
+    luminance_to_srgb_signal,
+    nits_to_pq,
+    pq_to_nits,
+)
 
 
 def test_pq_zero_represents_zero_nits():
@@ -59,3 +63,49 @@ def test_rejects_invalid_pq_signal(signal: float):
 def test_rejects_invalid_luminance(luminance: float):
     with pytest.raises(ValueError):
         nits_to_pq(luminance)
+
+def test_black_luminance_encodes_to_zero():
+    assert luminance_to_srgb_signal(
+        luminance=0.0,
+        white_luminance=100.0,
+    ) == pytest.approx(0.0)
+
+
+def test_white_luminance_encodes_to_one():
+    assert luminance_to_srgb_signal(
+        luminance=100.0,
+        white_luminance=100.0,
+    ) == pytest.approx(1.0)
+
+
+def test_half_linear_luminance_encodes_as_srgb():
+    assert luminance_to_srgb_signal(
+        luminance=50.0,
+        white_luminance=100.0,
+    ) == pytest.approx(
+        0.7353569830524495,
+        abs=1e-12,
+    )
+
+
+def test_luminance_below_black_is_clamped():
+    assert luminance_to_srgb_signal(
+        luminance=-10.0,
+        white_luminance=100.0,
+    ) == pytest.approx(0.0)
+
+
+def test_luminance_above_white_is_clamped():
+    assert luminance_to_srgb_signal(
+        luminance=200.0,
+        white_luminance=100.0,
+    ) == pytest.approx(1.0)
+
+
+def test_rejects_invalid_luminance_range():
+    with pytest.raises(ValueError):
+        luminance_to_srgb_signal(
+            luminance=50.0,
+            white_luminance=0.0,
+            black_luminance=0.0,
+        )

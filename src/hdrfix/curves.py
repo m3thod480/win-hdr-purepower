@@ -7,6 +7,12 @@ PQ_C2 = 18.8515625
 PQ_C3 = 18.6875
 PQ_MAX_LUMINANCE = 10_000.0
 
+SRGB_LINEAR_THRESHOLD = 0.00313066844250063
+SRGB_LINEAR_SCALE = 12.92
+SRGB_OFFSET = 0.055
+SRGB_SCALE = 1.055
+SRGB_ENCODING_GAMMA = 2.4
+
 
 def pq_to_nits(signal_value: float) -> float:
     """Convierte una señal PQ normalizada en luminancia absoluta."""
@@ -37,3 +43,32 @@ def nits_to_pq(luminance: float) -> float:
     denominator = 1.0 + PQ_C3 * luminance_power
 
     return (numerator / denominator) ** PQ_M2
+
+def luminance_to_srgb_signal(
+    luminance: float,
+    white_luminance: float,
+    black_luminance: float = 0.0,
+) -> float:
+    """Normaliza una luminancia y la codifica con la curva piecewise sRGB."""
+    if white_luminance <= black_luminance:
+        raise ValueError(
+            "La luminancia blanca debe ser mayor que la luminancia negra."
+        )
+
+    normalized = (
+        luminance - black_luminance
+    ) / (
+        white_luminance - black_luminance
+    )
+
+    # Todo lo que quede fuera del rango SDR se limita a 0–1.
+    normalized = max(0.0, min(1.0, normalized))
+
+    if normalized <= SRGB_LINEAR_THRESHOLD:
+        return normalized * SRGB_LINEAR_SCALE
+
+    return (
+        SRGB_SCALE
+        * normalized ** (1.0 / SRGB_ENCODING_GAMMA)
+        - SRGB_OFFSET
+    )
